@@ -1,0 +1,90 @@
+{
+  "name": "interactive-readme-viewer",
+  "displayName": "Interactive README Viewer",
+  "description": "A beautiful, interactive, theme-synced README.md viewer with a live two-way checklist engine — a real alternative to the static Markdown preview.",
+  "version": "0.1.0",
+  "publisher": "your-publisher-name",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Visualization", "Other"],
+  "keywords": ["readme", "markdown", "preview", "interactive", "webview", "checklist"],
+  "activationEvents": [
+    "onLanguage:markdown"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "interactiveReadmeViewer.open",
+        "title": "Open Interactive README Viewer",
+        "category": "Interactive README",
+        "icon": "$(preview)"
+      },
+      {
+        "command": "interactiveReadmeViewer.openToSide",
+        "title": "Open Interactive README Viewer to the Side",
+        "category": "Interactive README",
+        "icon": "$(split-horizontal)"
+      },
+      {
+        "command": "interactiveReadmeViewer.resetPromptSuppression",
+        "title": "Reset \"Don't Show Again\" Prompt",
+        "category": "Interactive README"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "when": "resourceFilename == README.md",
+          "command": "interactiveReadmeViewer.open",
+          "group": "navigation@1"
+        }
+      ],
+      "editor/title": [
+        {
+          "when": "resourceFilename == README.md",
+          "command": "interactiveReadmeViewer.openToSide",
+          "group": "navigation",
+          "icon": "$(preview)"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "interactiveReadmeViewer.open",
+          "when": "resourceLangId == markdown"
+        },
+        {
+          "command": "interactiveReadmeViewer.openToSide",
+          "when": "resourceLangId == markdown"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Interactive README Viewer",
+      "properties": {
+        "interactiveReadmeViewer.autoPromptOnOpen": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a toast prompting to open the Interactive Viewer whenever a README.md becomes the active editor."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "node esbuild.js --production",
+    "watch": "node esbuild.js --watch",
+    "typecheck": "tsc --noEmit -p ./"
+  },
+  "dependencies": {
+    "@vscode/webview-ui-toolkit": "^1.4.0",
+    "marked": "^11.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.5",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.19.11",
+    "typescript": "^5.3.3"
+  }
+}
