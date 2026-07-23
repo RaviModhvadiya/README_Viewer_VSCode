@@ -106,7 +106,7 @@ function renderMarkdown(markdownText: string): RenderResult {
     },
 
     listitem(token: Tokens.ListItem): string {
-      const body = this.parser.parse(token.tokens, !!token.loose);
+      const body = this.parser.parse(token.tokens);
       const cssClass = token.task ? 'task-list-item list-none flex items-start gap-1' : '';
       return `<li class="${cssClass}">${body}</li>\n`;
     },
