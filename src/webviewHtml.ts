@@ -41,13 +41,17 @@ export function getWebviewContent(
 <meta http-equiv="Content-Security-Policy" content="
   default-src 'none';
   img-src ${cspSource} https: data:;
-  style-src 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com ${cspSource};
+  style-src 'unsafe-inline' https://cdn.tailwindcss.com https://unpkg.com https://fonts.googleapis.com ${cspSource};
   script-src 'nonce-${cspNonce}' https://cdn.tailwindcss.com https://unpkg.com;
-  font-src https://unpkg.com data:;
+  font-src https://unpkg.com https://fonts.gstatic.com data:;
   connect-src https:;
 " />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>${escapeHtml(fileName)}</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
 
 <script nonce="${cspNonce}" src="https://cdn.tailwindcss.com"></script>
 <script nonce="${cspNonce}" type="module" src="https://unpkg.com/@vscode/webview-ui-toolkit/dist/toolkit.min.js"></script>
@@ -73,12 +77,19 @@ export function getWebviewContent(
 </script>
 
 <style nonce="${cspNonce}">
+  :root {
+    --accent-a: #8b5cf6;
+    --accent-b: #22d3ee;
+    --accent-c: #f472b6;
+    --accent-gradient: linear-gradient(90deg, var(--accent-a), var(--accent-b) 55%, var(--accent-c));
+  }
+
   html { scroll-behavior: smooth; }
   html, body { height: 100%; margin: 0; padding: 0; }
   body {
     background: var(--vscode-editor-background);
     color: var(--vscode-editor-foreground);
-    font-family: var(--vscode-font-family), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-family: 'Inter', var(--vscode-font-family), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     font-size: var(--vscode-font-size);
     line-height: 1.65;
   }
@@ -86,55 +97,111 @@ export function getWebviewContent(
   a:hover { color: var(--vscode-textLink-activeForeground); }
   ::selection { background: var(--vscode-editor-selectionBackground); }
 
-  /* ---- Typography hierarchy (fixes Tailwind Preflight stripping default heading styles) ---- */
-  #content { line-height: 1.75; }
+  /* ---- Custom scrollbars ---- */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--vscode-scrollbarSlider-background); border-radius: 6px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--vscode-scrollbarSlider-hoverBackground); }
+
+  /* ---- Content fills the full pane instead of a narrow fixed column ---- */
+  #content {
+    width: 100%;
+    line-height: 1.75;
+  }
+
+  /* ---- Typography hierarchy ---- */
   #content h1, #content h2, #content h3, #content h4, #content h5, #content h6 {
-    font-weight: 600;
+    font-family: 'Sora', var(--vscode-font-family), sans-serif;
+    font-weight: 700;
     line-height: 1.3;
-    margin-top: 1.8em;
+    margin-top: 1.9em;
     margin-bottom: 0.6em;
     scroll-margin-top: 1.5rem;
   }
   #content > h1:first-child, #content > h2:first-child { margin-top: 0; }
-  #content h1 { font-size: 1.9rem; font-weight: 700; padding-bottom: 0.35em; border-bottom: 1px solid var(--vscode-panel-border); }
-  #content h2 { font-size: 1.45rem; font-weight: 700; padding-bottom: 0.3em; border-bottom: 1px solid var(--vscode-panel-border); }
-  #content h3 { font-size: 1.2rem; }
-  #content h4 { font-size: 1.05rem; }
-  #content h5, #content h6 { font-size: 0.95rem; opacity: 0.85; text-transform: uppercase; letter-spacing: 0.03em; }
+
+  #content h1 {
+    font-size: 2.1rem;
+    font-weight: 800;
+    padding-bottom: 0.5em;
+    position: relative;
+  }
+  #content h1::after {
+    content: '';
+    position: absolute;
+    left: 0; bottom: 0;
+    width: 72px; height: 4px;
+    border-radius: 2px;
+    background: var(--accent-gradient);
+  }
+
+  #content h2 {
+    font-size: 1.5rem;
+    padding-left: 0.75rem;
+    border-left: 4px solid var(--accent-a);
+  }
+  #content h3 {
+    font-size: 1.2rem;
+    padding-left: 0.6rem;
+    border-left: 3px solid var(--accent-b);
+  }
+  #content h4 {
+    font-size: 1.05rem;
+    padding-left: 0.5rem;
+    border-left: 3px solid var(--accent-c);
+  }
+  #content h5, #content h6 {
+    font-size: 0.9rem;
+    opacity: 0.85;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
   #content p { margin: 0.9em 0; }
   #content strong, #content b { font-weight: 700; }
   #content em, #content i { font-style: italic; }
   #content ul, #content ol { padding-left: 1.4em; margin: 0.7em 0; }
   #content ul { list-style: disc; }
   #content ol { list-style: decimal; }
-  #content li { margin: 0.3em 0; }
+  #content li { margin: 0.35em 0; }
   #content li > ul, #content li > ol { margin: 0.3em 0 0.3em 0.2em; }
 
   /* ---- Inline code + fenced code blocks ---- */
   #content code {
-    font-family: var(--vscode-editor-font-family);
+    font-family: 'JetBrains Mono', var(--vscode-editor-font-family), monospace;
     background: var(--vscode-textCodeBlock-background);
-    padding: 0.15rem 0.35rem;
+    padding: 0.15rem 0.4rem;
     border-radius: 4px;
-    font-size: 0.9em;
+    font-size: 0.88em;
   }
-  .code-block-wrapper { position: relative; margin: 1em 0; }
+  .code-block-wrapper {
+    position: relative;
+    margin: 1.1em 0;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid var(--vscode-panel-border);
+  }
+  .code-block-wrapper::before {
+    content: '';
+    display: block;
+    height: 3px;
+    background: var(--accent-gradient);
+  }
   .code-block-wrapper pre {
     margin: 0;
     padding: 0.9rem 1rem;
-    border-radius: 8px;
     overflow-x: auto;
-    border: 1px solid var(--vscode-panel-border);
   }
   .code-block-wrapper pre code {
     background: transparent;
     padding: 0;
+    font-family: 'JetBrains Mono', var(--vscode-editor-font-family), monospace;
     font-size: 0.85em;
   }
   .code-copy-btn {
     position: absolute;
-    top: 0.5rem;
-    right: 0.5rem;
+    top: 0.7rem;
+    right: 0.6rem;
     font-size: 0.7rem;
     padding: 0.2rem 0.6rem;
     border-radius: 5px;
@@ -142,48 +209,64 @@ export function getWebviewContent(
     color: var(--vscode-button-secondaryForeground, var(--vscode-editor-foreground));
     border: 1px solid var(--vscode-panel-border);
     opacity: 0;
-    transition: opacity 120ms ease, background 120ms ease;
+    transition: opacity 120ms ease, background 120ms ease, transform 120ms ease;
     cursor: pointer;
   }
-  .code-block-wrapper:hover .code-copy-btn { opacity: 0.85; }
-  .code-copy-btn:hover { opacity: 1 !important; background: var(--vscode-button-secondaryHoverBackground, rgba(255, 255, 255, 0.15)); }
+  .code-block-wrapper:hover .code-copy-btn { opacity: 0.9; }
+  .code-copy-btn:hover { opacity: 1 !important; transform: translateY(-1px); background: var(--vscode-button-secondaryHoverBackground, rgba(255, 255, 255, 0.15)); }
 
-  /* ---- Blockquotes, tables, rules ---- */
+  /* ---- Blockquotes, tables, rules, images ---- */
   #content blockquote {
-    border-left: 3px solid var(--vscode-textBlockQuote-border);
+    border-left: 3px solid var(--accent-b);
     background: var(--vscode-textBlockQuote-background);
     margin: 1em 0;
-    padding: 0.5rem 1rem;
+    padding: 0.6rem 1.1rem;
     border-radius: 0 6px 6px 0;
     font-style: italic;
     opacity: 0.95;
   }
-  #content table { border-collapse: collapse; width: 100%; margin: 1em 0; }
-  #content th { background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.05)); text-align: left; font-weight: 600; }
-  #content th, #content td { border: 1px solid var(--vscode-panel-border); padding: 0.5rem 0.75rem; }
+  #content table { border-collapse: collapse; width: 100%; margin: 1.1em 0; }
+  #content th { background: var(--vscode-list-hoverBackground, rgba(255, 255, 255, 0.05)); text-align: left; font-weight: 700; }
+  #content th, #content td { border: 1px solid var(--vscode-panel-border); padding: 0.55rem 0.8rem; }
   #content tr:nth-child(even) td { background: rgba(255, 255, 255, 0.02); }
-  #content hr { border: none; border-top: 1px solid var(--vscode-panel-border); margin: 2em 0; }
-  #content img { max-width: 100%; border-radius: 6px; }
+  #content tr:hover td { background: rgba(139, 92, 246, 0.06); }
+  #content hr { border: none; height: 3px; border-radius: 2px; background: var(--accent-gradient); opacity: 0.4; margin: 2.2em 0; }
+  #content img { max-width: 100%; border-radius: 8px; }
+
+  /* ---- Links inside content get an animated gradient underline ---- */
+  #content a {
+    text-decoration: none;
+    background-image: var(--accent-gradient);
+    background-repeat: no-repeat;
+    background-position: 0 100%;
+    background-size: 0% 2px;
+    transition: background-size 160ms ease;
+    padding-bottom: 1px;
+  }
+  #content a:hover { background-size: 100% 2px; }
 
   /* ---- Task checkboxes ---- */
   .task-checkbox {
     width: 16px;
     height: 16px;
-    accent-color: var(--vscode-focusBorder);
+    accent-color: var(--accent-a);
     margin-top: 0.2em;
     cursor: pointer;
     transition: transform 120ms ease;
   }
-  .task-checkbox:active { transform: scale(0.88); }
+  .task-checkbox:active { transform: scale(0.85); }
+  .task-checkbox:checked { filter: drop-shadow(0 0 4px var(--accent-a)); }
 
   /* ---- Table of contents ---- */
   .toc-link { transition: background 120ms ease, opacity 120ms ease, border-color 120ms ease; border-radius: 4px; }
   .toc-link.active {
-    background: var(--vscode-list-activeSelectionBackground, rgba(255, 255, 255, 0.08));
+    background: linear-gradient(90deg, rgba(139, 92, 246, 0.16), rgba(34, 211, 238, 0.08));
     color: var(--vscode-textLink-activeForeground);
     font-weight: 600;
-    border-left-color: var(--vscode-focusBorder) !important;
+    border-left-color: var(--accent-a) !important;
   }
+
+  #toc-panel { font-family: 'Inter', var(--vscode-font-family), sans-serif; }
 
   .fade-in { animation: fadeIn 160ms ease-in; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: translateY(0); } }
@@ -200,17 +283,17 @@ export function getWebviewContent(
     </aside>
 
     <main class="flex-1 flex flex-col min-w-0">
-      <header class="flex items-center justify-between px-4 py-2 border-b border-[var(--vscode-panel-border)]">
+      <header class="flex items-center justify-between px-5 py-2.5 border-b border-[var(--vscode-panel-border)]">
         <div class="flex items-center gap-2 min-w-0">
           <button id="toc-expand-btn" class="hidden text-xs opacity-60 hover:opacity-100" title="Show outline">&raquo;</button>
-          <span id="doc-title" class="font-semibold truncate">${escapeHtml(fileName)}</span>
+          <span id="doc-title" class="font-semibold truncate" style="font-family:'Sora',var(--vscode-font-family),sans-serif;">${escapeHtml(fileName)}</span>
         </div>
         <div id="status-badge" class="text-xs opacity-60"></div>
       </header>
 
       <div id="error-banner" class="hidden bg-[var(--vscode-inputValidation-errorBackground)] border-b border-[var(--vscode-inputValidation-errorBorder)] text-[var(--vscode-inputValidation-errorForeground)] px-4 py-2 text-sm"></div>
 
-      <article id="content" class="flex-1 overflow-y-auto px-6 py-5 max-w-3xl fade-in">${markdownText}</article>
+      <article id="content" class="flex-1 overflow-y-auto px-6 md:px-12 lg:px-20 py-6 fade-in">${markdownText}</article>
     </main>
   </div>
 
