@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { getWebviewContent, type TocEntry } from './webviewHtml';
+import * as crypto from 'node:crypto';
+import { URL } from 'node:url';
+import { getWebviewContent, type TocEntry, type HighlightAssetUris } from './webviewHtml';
 import { Marked, type Tokens, type RendererObject } from 'marked';
 
 // ---------------------------------------------------------------------------
@@ -13,6 +15,8 @@ const CONFIG_SECTION = 'interactiveReadmeViewer';
 const SUPPRESS_GLOBAL_KEY = 'interactiveReadmeViewer.suppressGlobalPrompt';
 const SUPPRESS_WORKSPACES_KEY = 'interactiveReadmeViewer.suppressedWorkspacePaths';
 const HOT_RELOAD_DEBOUNCE_MS = 250;
+const SAFE_URL_PROTOCOLS = new Set(['http:', 'https:', 'mailto:']);
+const SAFE_EXTERNAL_PROTOCOLS = new Set(['http:', 'https:']);
 
 // ---------------------------------------------------------------------------
 // Output channel / logging
@@ -46,6 +50,24 @@ type WebviewToExtensionMessage =
   | { type: 'clientLog'; level: 'info' | 'warn' | 'error'; message: string };
 
 // ---------------------------------------------------------------------------
+// URL sanitization (security: only allow safe schemes through to the DOM)
+// ---------------------------------------------------------------------------
+
+function sanitizeUrl(rawUrl: string): string {
+  const trimmed = rawUrl.trim();
+  try {
+    const parsed = new URL(trimmed, 'https://relative-base.invalid/');
+    if (SAFE_URL_PROTOCOLS.has(parsed.protocol)) {
+      return trimmed;
+    }
+  } catch {
+    // Malformed URL — falls through to the blocked case below.
+  }
+  logError(`Blocked a link/image with a disallowed or malformed URL: ${trimmed}`);
+  return '#';
+}
+
+// ---------------------------------------------------------------------------
 // Markdown rendering (single source of truth for parsing)
 // ---------------------------------------------------------------------------
 
@@ -67,11 +89,6 @@ function escapeHtmlAttribute(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-/**
- * Renders markdown to HTML using a fresh `Marked` instance per call (rather than
- * mutating the global `marked` singleton via `marked.use()`), so repeated calls
- * during hot-reload never leak stacked renderer overrides.
- */
 function renderMarkdown(markdownText: string): RenderResult {
   const toc: TocEntry[] = [];
   const slugCounts = new Map<string, number>();
@@ -95,9 +112,6 @@ function renderMarkdown(markdownText: string): RenderResult {
       );
     },
 
-    // Called once per task-list item; this is the hook we use to stamp a stable,
-    // document-order index onto each checkbox so toggles can be mapped back to
-    // the exact source line without re-parsing the whole tree.
     checkbox(token: Tokens.Checkbox): string {
       const index = checkboxCounter++;
       return `<input type="checkbox" data-checkbox-index="${index}" ${
@@ -113,16 +127,18 @@ function renderMarkdown(markdownText: string): RenderResult {
 
     link(token: Tokens.Link): string {
       const text = this.parser.parseInline(token.tokens);
-      const isExternal = /^https?:\/\//i.test(token.href);
+      const safeHref = sanitizeUrl(token.href);
+      const isExternal = /^https?:\/\//i.test(safeHref);
       const attrs = isExternal ? ' target="_blank" rel="noopener noreferrer" class="external-link"' : '';
       const titleAttr = token.title ? ` title="${escapeHtmlAttribute(token.title)}"` : '';
-      return `<a href="${token.href}"${attrs}${titleAttr}>${text}</a>`;
+      return `<a href="${escapeHtmlAttribute(safeHref)}"${attrs}${titleAttr}>${text}</a>`;
     },
 
     image(token: Tokens.Image): string {
+      const safeHref = sanitizeUrl(token.href);
       const altAttr = token.text ? escapeHtmlAttribute(token.text) : '';
       const titleAttr = token.title ? ` title="${escapeHtmlAttribute(token.title)}"` : '';
-      return `<img src="${token.href}" alt="${altAttr}"${titleAttr} class="max-w-full rounded-md" loading="lazy" />`;
+      return `<img src="${escapeHtmlAttribute(safeHref)}" alt="${altAttr}"${titleAttr} class="max-w-full rounded-md" loading="lazy" />`;
     },
   };
 
@@ -141,9 +157,6 @@ function renderMarkdown(markdownText: string): RenderResult {
 // Checkbox line mapping & source mutation
 // ---------------------------------------------------------------------------
 
-// Matches GFM unordered task-list lines: "  - [ ] some text" / "* [x] done".
-// The Nth match (0-indexed, top-to-bottom) corresponds to the Nth checkbox
-// emitted by the renderer above, since marked walks tokens in document order.
 const CHECKBOX_LINE_REGEX = /^(\s*[-*+]\s\[)([ xX])(\]\s.*)$/;
 
 function findCheckboxLineNumber(documentText: string, checkboxIndex: number): number | undefined {
@@ -235,12 +248,7 @@ class PromptSuppressionManager {
 // ---------------------------------------------------------------------------
 
 function generateNonce(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let result = '';
-  for (let i = 0; i < 32; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return result;
+  return crypto.randomBytes(16).toString('base64');
 }
 
 function themeKindToString(kind: vscode.ColorThemeKind): 'light' | 'dark' | 'high-contrast' {
@@ -261,6 +269,7 @@ class InteractiveReadmePanel {
 
   private readonly panel: vscode.WebviewPanel;
   private readonly disposables: vscode.Disposable[] = [];
+  private readonly highlightAssets: HighlightAssetUris;
   private documentUri: vscode.Uri;
   private updateTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -280,16 +289,23 @@ class InteractiveReadmePanel {
       {
         enableScripts: true,
         retainContextWhenHidden: true,
-        localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'media'), vscode.Uri.joinPath(extensionUri, 'dist')],
+        localResourceRoots: [vscode.Uri.joinPath(extensionUri, 'media')],
       }
     );
 
-    InteractiveReadmePanel.currentPanel = new InteractiveReadmePanel(panel, document);
+    const highlightAssets: HighlightAssetUris = {
+      scriptUri: panel.webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'highlight.bundle.js')).toString(),
+      darkThemeUri: panel.webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'hljs-atom-one-dark.css')).toString(),
+      lightThemeUri: panel.webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'media', 'hljs-atom-one-light.css')).toString(),
+    };
+
+    InteractiveReadmePanel.currentPanel = new InteractiveReadmePanel(panel, document, highlightAssets);
   }
 
-  private constructor(panel: vscode.WebviewPanel, document: vscode.TextDocument) {
+  private constructor(panel: vscode.WebviewPanel, document: vscode.TextDocument, highlightAssets: HighlightAssetUris) {
     this.panel = panel;
     this.documentUri = document.uri;
+    this.highlightAssets = highlightAssets;
 
     try {
       const { html, toc } = renderMarkdown(document.getText());
@@ -299,16 +315,18 @@ class InteractiveReadmePanel {
         nonce,
         this.panel.webview.cspSource,
         toc,
-        path.basename(document.fileName)
+        path.basename(document.fileName),
+        this.highlightAssets
       );
     } catch (error) {
       logError('Failed to build initial webview content.', error);
       this.panel.webview.html = getWebviewContent(
-        '<p class="text-red-400">Failed to render this document. See the output channel for details.</p>',
+        '<p style="color: var(--vscode-errorForeground);">Failed to render this document. See the output channel for details.</p>',
         generateNonce(),
         this.panel.webview.cspSource,
         [],
-        path.basename(document.fileName)
+        path.basename(document.fileName),
+        this.highlightAssets
       );
     }
 
@@ -337,7 +355,6 @@ class InteractiveReadmePanel {
     return this.documentUri.toString() === uri.toString();
   }
 
-  /** Debounced hot-reload entry point, called from the onDidChangeTextDocument listener. */
   public scheduleUpdate(document: vscode.TextDocument): void {
     if (this.updateTimer) {
       clearTimeout(this.updateTimer);
@@ -377,13 +394,15 @@ class InteractiveReadmePanel {
           if (!success) {
             this.postMessage({ type: 'error', message: 'Could not update that checklist item in the source file.' });
           }
-          // No manual re-render here: applyEdit fires onDidChangeTextDocument,
-          // which drives the hot-reload path and keeps the file as the single
-          // source of truth.
           break;
         }
         case 'openExternal': {
-          await vscode.env.openExternal(vscode.Uri.parse(message.href));
+          const parsed = vscode.Uri.parse(message.href);
+          if (!SAFE_EXTERNAL_PROTOCOLS.has(`${parsed.scheme}:`)) {
+            logError(`Blocked an attempt to open a non-http(s) external URI: ${message.href}`);
+            break;
+          }
+          await vscode.env.openExternal(parsed);
           break;
         }
         case 'clientLog': {
@@ -530,7 +549,6 @@ export function activate(context: vscode.ExtensionContext): void {
     changeListener
   );
 
-  // Catch the case where the extension activates while a README is already focused.
   if (vscode.window.activeTextEditor && isReadmeDocument(vscode.window.activeTextEditor.document)) {
     void maybePromptToOpenViewer(context, vscode.window.activeTextEditor.document, suppressionManager);
   }
